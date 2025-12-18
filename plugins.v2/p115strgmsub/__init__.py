@@ -29,7 +29,7 @@ from .pansou import PanSouClient
 from .p115client import P115ClientManager
 from .nullbr import NullbrClient
 from .ui_config import UIConfig
-from .file_matcher import FileMatcher
+from .file_matcher import FileMatcher, SubscribeFilter
 
 lock = Lock()
 
@@ -491,15 +491,28 @@ class P115StrgmSub(_PluginBase):
                 logger.info(f"处理电影订阅：{subscribe.name} ({subscribe.year})")
 
                 # 检查历史记录是否已成功转存
-                already_transferred = any(
-                    h.get("title") == subscribe.name
-                    and h.get("type") == "电影"
-                    and h.get("status") == "成功"
-                    for h in history
-                )
-                if already_transferred:
-                    logger.info(f"电影 {subscribe.name} 已在历史记录中，跳过")
-                    continue
+                # 非严格模式下，只跳过完美匹配的，低分的可以继续洗版
+                movie_history_score = -1  # -1 表示未转存过
+                movie_perfect_match = False
+                for h in history:
+                    if (h.get("title") == subscribe.name
+                            and h.get("type") == "电影"
+                            and h.get("status") == "成功"):
+                        score = h.get("filter_score", 0)
+                        perfect = h.get("perfect_match", False)
+                        if score > movie_history_score:
+                            movie_history_score = score
+                            movie_perfect_match = perfect
+
+                # best_version=1 表示开启洗版（非严格模式）
+                is_best_version = bool(subscribe.best_version)
+
+                if movie_history_score >= 0:
+                    if not is_best_version or movie_perfect_match:
+                        logger.info(f"电影 {subscribe.name} 已在历史记录中(洗版:{is_best_version}, 完美匹配:{movie_perfect_match})，跳过")
+                        continue
+                    else:
+                        logger.info(f"电影 {subscribe.name} 洗版中，历史分数 {movie_history_score}，尝试寻找更优资源")
 
                 # 生成元数据
                 meta = MetaInfo(subscribe.name)
@@ -530,6 +543,17 @@ class P115StrgmSub(_PluginBase):
 
                 logger.info(f"找到 {len(p115_results)} 个 115 网盘资源")
 
+                # 创建订阅过滤条件（best_version=1 时为非严格模式/洗版模式）
+                subscribe_filter = SubscribeFilter(
+                    quality=subscribe.quality,
+                    resolution=subscribe.resolution,
+                    effect=subscribe.effect,
+                    strict=not is_best_version
+                )
+                if subscribe_filter.has_filters():
+                    mode_text = "洗版模式" if is_best_version else "严格模式"
+                    logger.info(f"电影 {subscribe.name} 过滤条件({mode_text}) - 质量: {subscribe.quality}, 分辨率: {subscribe.resolution}, 特效: {subscribe.effect}")
+
                 # 遍历搜索结果，尝试找到并转存电影
                 movie_transferred = False
                 for resource in p115_results:
@@ -550,11 +574,27 @@ class P115StrgmSub(_PluginBase):
                             logger.debug(f"分享链接无内容或已失效：{share_url}")
                             continue
 
-                        # 匹配电影文件（查找最大的视频文件）
-                        matched_file = FileMatcher.match_movie_file(share_files, mediainfo.title)
+                        # 匹配电影文件（查找最大的视频文件，应用过滤条件）
+                        matched_file = FileMatcher.match_movie_file(
+                            share_files, mediainfo.title,
+                            subscribe_filter=subscribe_filter
+                        )
 
                         if matched_file:
-                            logger.info(f"找到匹配文件：{matched_file.get('name')}")
+                            file_name = matched_file.get('name', '')
+                            logger.info(f"找到匹配文件：{file_name}")
+
+                            # 计算当前文件的过滤分数和是否完美匹配
+                            _, current_score = subscribe_filter.match(file_name) if subscribe_filter.has_filters() else (True, 0)
+                            is_perfect = subscribe_filter.is_perfect_match(file_name) if subscribe_filter.has_filters() else True
+
+                            # 洗版模式下检查是否需要升级资源
+                            if is_best_version and movie_history_score >= 0:
+                                if current_score <= movie_history_score:
+                                    logger.debug(f"电影 {mediainfo.title} 已有分数 {movie_history_score}，当前 {current_score}，跳过")
+                                    continue
+                                else:
+                                    logger.info(f"电影 {mediainfo.title} 洗版：旧分数 {movie_history_score} -> 新分数 {current_score}")
 
                             # 构建转存路径
                             save_dir = f"{self._movie_save_path}/{mediainfo.title} ({mediainfo.year})" if mediainfo.year else f"{self._movie_save_path}/{mediainfo.title}"
@@ -567,14 +607,16 @@ class P115StrgmSub(_PluginBase):
                                 save_path=save_dir
                             )
 
-                            # 记录历史
+                            # 记录历史（包含分数信息）
                             history_item = {
                                 "title": mediainfo.title,
                                 "year": mediainfo.year,
                                 "type": "电影",
                                 "status": "成功" if success else "失败",
                                 "share_url": share_url,
-                                "file_name": matched_file.get("name"),
+                                "file_name": file_name,
+                                "filter_score": current_score,
+                                "perfect_match": is_perfect,
                                 "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             }
                             history.append(history_item)
@@ -582,8 +624,10 @@ class P115StrgmSub(_PluginBase):
                             if success:
                                 transferred_count += 1
                                 movie_transferred = True
-                                logger.info(f"成功转存电影：{mediainfo.title}")
-                                
+                                movie_history_score = current_score  # 更新历史分数
+                                score_info = f"(分数:{current_score}, 完美匹配:{is_perfect})" if subscribe_filter.has_filters() else ""
+                                logger.info(f"成功转存电影：{mediainfo.title} {score_info}")
+
                                 # 电影转存成功后完成订阅
                                 self._check_and_finish_subscribe(
                                     subscribe=subscribe,
@@ -687,13 +731,33 @@ class P115StrgmSub(_PluginBase):
                     if len(missing_episodes) < original_count:
                                                                         logger.info(f"根据订阅设置，过滤掉小于 {subscribe.start_episode} 的剧集")
 
+                # best_version=1 表示开启洗版（非严格模式）
+                is_best_version = bool(subscribe.best_version)
+
                 # 从历史记录中排除已成功转存的集数，避免重复转存
+                # 洗版模式下，只排除完美匹配的集数，低分集数可以继续搜索更优资源
                 transferred_episodes = set()
+                # 记录每集的历史转存分数，用于洗版模式下判断是否需要升级
+                episode_history_scores: Dict[int, int] = {}
                 for h in history:
                     if (h.get("title") == mediainfo.title
                             and h.get("season") == season
                             and h.get("status") == "成功"):
-                        transferred_episodes.add(h.get("episode"))
+                        ep = h.get("episode")
+                        score = h.get("filter_score", 0)
+                        perfect = h.get("perfect_match", False)
+
+                        if not is_best_version:
+                            # 非洗版模式（严格模式）：所有成功的都跳过
+                            transferred_episodes.add(ep)
+                        else:
+                            # 洗版模式：只跳过完美匹配的，低分的可以继续洗版
+                            if perfect:
+                                transferred_episodes.add(ep)
+                            else:
+                                # 记录当前最高分数
+                                if ep not in episode_history_scores or score > episode_history_scores[ep]:
+                                    episode_history_scores[ep] = score
                 
                 # 构建转存路径（提前构建以便检查网盘目录）
                 save_dir = f"{self._save_path}/{mediainfo.title}/Season {season}"
@@ -734,7 +798,18 @@ class P115StrgmSub(_PluginBase):
                     continue
 
                 logger.info(f"找到 {len(p115_results)} 个 115 网盘资源")
-                
+
+                # 创建订阅过滤条件
+                subscribe_filter = SubscribeFilter(
+                    quality=subscribe.quality,
+                    resolution=subscribe.resolution,
+                    effect=subscribe.effect,
+                    strict=not is_best_version
+                )
+                if subscribe_filter.has_filters():
+                    mode_text = "洗版模式" if is_best_version else "严格模式"
+                    logger.info(f"{mediainfo.title} S{season} 过滤条件({mode_text}) - 质量: {subscribe.quality}, 分辨率: {subscribe.resolution}, 特效: {subscribe.effect}")
+
                 # 成功转存的集数列表
                 success_episodes = []
 
@@ -745,7 +820,7 @@ class P115StrgmSub(_PluginBase):
 
                     if not share_url:
                         continue
-                    
+
                     # 简单的标题过滤
                     if mediainfo.title not in resource_title:
                         # logger.debug(f"跳过不匹配的资源: {resource_title}")
@@ -761,17 +836,32 @@ class P115StrgmSub(_PluginBase):
                             logger.debug(f"分享链接无内容或已失效：{share_url}")
                             continue
 
-                        # 匹配缺失剧集
+                        # 匹配缺失剧集（应用过滤条件）
                         for episode in missing_episodes[:]:  # 使用切片复制，因为会修改列表
                             matched_file = FileMatcher.match_episode_file(
                                 share_files,
                                 mediainfo.title,
                                 season,
-                                episode
+                                episode,
+                                subscribe_filter=subscribe_filter
                             )
 
                             if matched_file:
-                                logger.info(f"找到匹配文件：{matched_file.get('name')} -> E{episode:02d}")
+                                file_name = matched_file.get('name', '')
+                                logger.info(f"找到匹配文件：{file_name} -> E{episode:02d}")
+
+                                # 计算当前文件的过滤分数和是否完美匹配
+                                _, current_score = subscribe_filter.match(file_name) if subscribe_filter.has_filters() else (True, 0)
+                                is_perfect = subscribe_filter.is_perfect_match(file_name) if subscribe_filter.has_filters() else True
+
+                                # 洗版模式下检查是否需要升级资源
+                                if is_best_version and episode in episode_history_scores:
+                                    old_score = episode_history_scores[episode]
+                                    if current_score <= old_score:
+                                        logger.debug(f"E{episode:02d} 已有分数 {old_score}，当前 {current_score}，跳过")
+                                        continue
+                                    else:
+                                        logger.info(f"E{episode:02d} 洗版：旧分数 {old_score} -> 新分数 {current_score}")
 
                                 # 构建转存路径
                                 save_dir = f"{self._save_path}/{mediainfo.title}/Season {season}"
@@ -784,23 +874,30 @@ class P115StrgmSub(_PluginBase):
                                     save_path=save_dir
                                 )
 
-                                # 记录历史
+                                # 记录历史（包含分数信息）
                                 history_item = {
                                     "title": mediainfo.title,
                                     "season": season,
                                     "episode": episode,
                                     "status": "成功" if success else "失败",
                                     "share_url": share_url,
-                                    "file_name": matched_file.get("name"),
-                                                                                                            "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    "file_name": file_name,
+                                    "filter_score": current_score,
+                                    "perfect_match": is_perfect,
+                                    "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                 }
                                 history.append(history_item)
 
                                 if success:
                                     transferred_count += 1
-                                    missing_episodes.remove(episode)
+                                    # 更新历史分数记录
+                                    episode_history_scores[episode] = current_score
+                                    # 只有在 missing_episodes 中才移除
+                                    if episode in missing_episodes:
+                                        missing_episodes.remove(episode)
                                     success_episodes.append(episode)
-                                    logger.info(f"成功转存：{mediainfo.title} S{season:02d}E{episode:02d}")
+                                    score_info = f"(分数:{current_score}, 完美匹配:{is_perfect})" if subscribe_filter.has_filters() else ""
+                                    logger.info(f"成功转存：{mediainfo.title} S{season:02d}E{episode:02d} {score_info}")
                                 else:
                                     logger.error(f"转存失败：{mediainfo.title} S{season:02d}E{episode:02d}")
 

@@ -10,9 +10,103 @@ from app.schemas import MediaInfo
 from app.log import logger
 
 
+class SubscribeFilter:
+    """订阅过滤条件"""
+
+    def __init__(self, quality: str = None, resolution: str = None, effect: str = None, strict: bool = True):
+        """
+        初始化过滤条件
+
+        :param quality: 质量正则表达式，如 "WEB-?DL|WEB-?RIP"
+        :param resolution: 分辨率正则表达式，如 "4K|2160p|x2160"
+        :param effect: 特效正则表达式，如 "Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+"
+        :param strict: 是否严格匹配，False 时不符合条件的资源也会被接受但分数较低
+        """
+        self.quality = quality
+        self.resolution = resolution
+        self.effect = effect
+        self.strict = strict
+
+    def has_filters(self) -> bool:
+        """是否有任何过滤条件"""
+        return bool(self.quality or self.resolution or self.effect)
+
+    def match(self, file_name: str) -> Tuple[bool, int]:
+        """
+        检查文件名是否符合过滤条件
+
+        :param file_name: 文件名
+        :return: (是否匹配, 匹配分数) - 分数越高越优先
+                 严格模式下不匹配返回 (False, 0)
+                 非严格模式下不匹配返回 (True, 较低分数)
+        """
+        if not self.has_filters():
+            return True, 0
+
+        score = 0
+        matched_count = 0
+        total_rules = 0
+
+        # 检查质量
+        if self.quality:
+            total_rules += 1
+            if re.search(self.quality, file_name, re.IGNORECASE):
+                score += 100  # 质量匹配加 100 分
+                matched_count += 1
+                logger.debug(f"文件 {file_name} 匹配质量规则: {self.quality}")
+            else:
+                logger.debug(f"文件 {file_name} 不匹配质量规则: {self.quality}")
+                if self.strict:
+                    return False, 0
+
+        # 检查分辨率
+        if self.resolution:
+            total_rules += 1
+            if re.search(self.resolution, file_name, re.IGNORECASE):
+                score += 100  # 分辨率匹配加 100 分
+                matched_count += 1
+                logger.debug(f"文件 {file_name} 匹配分辨率规则: {self.resolution}")
+            else:
+                logger.debug(f"文件 {file_name} 不匹配分辨率规则: {self.resolution}")
+                if self.strict:
+                    return False, 0
+
+        # 检查特效
+        if self.effect:
+            total_rules += 1
+            if re.search(self.effect, file_name, re.IGNORECASE):
+                score += 100  # 特效匹配加 100 分
+                matched_count += 1
+                logger.debug(f"文件 {file_name} 匹配特效规则: {self.effect}")
+            else:
+                logger.debug(f"文件 {file_name} 不匹配特效规则: {self.effect}")
+                if self.strict:
+                    return False, 0
+
+        # 非严格模式下，即使不完全匹配也返回 True，但分数较低
+        # 完全匹配的资源分数更高，便于后续替换
+        return True, score
+
+    def is_perfect_match(self, file_name: str) -> bool:
+        """
+        检查文件是否完全匹配所有过滤条件
+        用于判断是否需要替换已有资源
+        """
+        if not self.has_filters():
+            return True
+
+        if self.quality and not re.search(self.quality, file_name, re.IGNORECASE):
+            return False
+        if self.resolution and not re.search(self.resolution, file_name, re.IGNORECASE):
+            return False
+        if self.effect and not re.search(self.effect, file_name, re.IGNORECASE):
+            return False
+        return True
+
+
 class FileMatcher:
     """文件匹配器类"""
-    
+
     # 视频文件扩展名
     VIDEO_EXTENSIONS = {'.mkv', '.mp4', '.avi', '.rmvb', '.wmv', '.flv', '.ts', '.m2ts'}
     
@@ -96,7 +190,8 @@ class FileMatcher:
         files: List[dict],
         title: str,
         season: int,
-        episode: int
+        episode: int,
+        subscribe_filter: 'SubscribeFilter' = None
     ) -> Optional[dict]:
         """
         匹配剧集文件
@@ -105,6 +200,7 @@ class FileMatcher:
         :param title: 剧集标题
         :param season: 季号
         :param episode: 集号
+        :param subscribe_filter: 订阅过滤条件（质量、分辨率、特效）
         :return: 匹配的文件信息
         """
         # 宽松模式：不包含季号的匹配模式（需要额外验证）
@@ -125,6 +221,7 @@ class FileMatcher:
         ]
 
         # 收集候选文件，按匹配优先级排序
+        # 每个元素是 (file, filter_score)，filter_score 越高越优先
         strict_matches = []
         loose_matches = []
         loosest_matches = []
@@ -137,7 +234,7 @@ class FileMatcher:
             if is_dir:
                 sub_files = file.get("children", [])
                 if sub_files:
-                    matched = FileMatcher.match_episode_file(sub_files, title, season, episode)
+                    matched = FileMatcher.match_episode_file(sub_files, title, season, episode, subscribe_filter)
                     if matched:
                         return matched
                 continue
@@ -151,13 +248,21 @@ class FileMatcher:
             if FileMatcher._contains_other_season(file_name, season):
                 continue
 
+            # 应用订阅过滤条件
+            filter_score = 0
+            if subscribe_filter and subscribe_filter.has_filters():
+                matched, filter_score = subscribe_filter.match(file_name)
+                if not matched:
+                    logger.debug(f"文件 {file_name} 不符合订阅过滤条件，跳过")
+                    continue
+
             # 优先检查 SxxExx 格式（最准确）
             sxex_info = FileMatcher._extract_episode_from_sxex(file_name)
             if sxex_info:
                 found_season, found_episode = sxex_info
                 # 如果有明确的 SxxExx 格式，必须精确匹配，不再使用其他模式
                 if found_season == season and found_episode == episode:
-                    strict_matches.append(file)
+                    strict_matches.append((file, filter_score))
                 # 不匹配则跳过这个文件，不再尝试其他模式
                 continue
 
@@ -166,26 +271,29 @@ class FileMatcher:
                 if re.search(pattern, file_name, re.IGNORECASE):
                     # 额外检查：如果是第一季，或者文件名明确匹配目标季
                     if season == 1 or FileMatcher._matches_target_season(file_name, season):
-                        loose_matches.append(file)
+                        loose_matches.append((file, filter_score))
                     # 如果文件名没有任何季号标识，也接受（可能是单季剧）
                     elif not re.search(r'[Ss]\d+[Ee]|第\s*\d+\s*季|[Ss]eason\s*\d+', file_name, re.IGNORECASE):
-                        loose_matches.append(file)
+                        loose_matches.append((file, filter_score))
                     break
             else:
                 # 最宽松模式：仅当文件名明确匹配目标季时使用
                 if FileMatcher._matches_target_season(file_name, season):
                     for pattern in loosest_patterns:
                         if re.search(pattern, file_name, re.IGNORECASE):
-                            loosest_matches.append(file)
+                            loosest_matches.append((file, filter_score))
                             break
 
-        # 按优先级返回匹配结果
+        # 按优先级返回匹配结果（同级别内按 filter_score 降序排序）
         if strict_matches:
-            return strict_matches[0]
+            strict_matches.sort(key=lambda x: x[1], reverse=True)
+            return strict_matches[0][0]
         if loose_matches:
-            return loose_matches[0]
+            loose_matches.sort(key=lambda x: x[1], reverse=True)
+            return loose_matches[0][0]
         if loosest_matches:
-            return loosest_matches[0]
+            loosest_matches.sort(key=lambda x: x[1], reverse=True)
+            return loosest_matches[0][0]
 
         return None
 
@@ -193,7 +301,8 @@ class FileMatcher:
     def match_movie_file(
         files: List[dict],
         title: str,
-        min_size_mb: int = 500
+        min_size_mb: int = 500,
+        subscribe_filter: 'SubscribeFilter' = None
     ) -> Optional[dict]:
         """
         匹配电影文件（查找最大的视频文件）
@@ -201,8 +310,10 @@ class FileMatcher:
         :param files: 文件列表
         :param title: 电影标题
         :param min_size_mb: 最小文件大小（MB），用于过滤小文件
+        :param subscribe_filter: 订阅过滤条件（质量、分辨率、特效）
         :return: 匹配的文件信息
         """
+        # 候选列表：(file, filter_score)
         candidates = []
         min_size_bytes = min_size_mb * 1024 * 1024
 
@@ -228,16 +339,24 @@ class FileMatcher:
                 if file_size < min_size_bytes:
                     continue
 
-                candidates.append(file)
+                # 应用订阅过滤条件
+                filter_score = 0
+                if subscribe_filter and subscribe_filter.has_filters():
+                    matched, filter_score = subscribe_filter.match(file_name)
+                    if not matched:
+                        logger.debug(f"电影文件 {file_name} 不符合订阅过滤条件，跳过")
+                        continue
+
+                candidates.append((file, filter_score))
 
         collect_video_files(files)
 
         if not candidates:
             return None
 
-        # 按文件大小降序排序，返回最大的文件
-        candidates.sort(key=lambda x: x.get("size", 0), reverse=True)
-        return candidates[0]
+        # 优先按 filter_score 降序，其次按文件大小降序
+        candidates.sort(key=lambda x: (x[1], x[0].get("size", 0)), reverse=True)
+        return candidates[0][0]
 
     @staticmethod
     def check_existing_episodes(
