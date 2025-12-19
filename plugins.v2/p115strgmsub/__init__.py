@@ -20,6 +20,7 @@ from app.chain.download import DownloadChain
 from app.chain.subscribe import SubscribeChain
 from app.db import SessionFactory
 from app.db.subscribe_oper import SubscribeOper
+from app.db.models.site import Site
 from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas import MediaInfo
@@ -44,7 +45,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     # 插件作者
     plugin_author = "mrtian2016"
     # 作者主页
@@ -79,6 +80,7 @@ class P115StrgmSub(_PluginBase):
     _nullbr_app_id: str = "J5LrECLuR"  # Nullbr APP ID
     _nullbr_api_key: str = ""  # Nullbr API Key
     _nullbr_priority: bool = True  # Nullbr 优先（True: 优先使用 Nullbr，False: 优先使用 PanSou）
+    _block_system_subscribe: bool = False  # 是否屏蔽系统订阅
     # 运行时对象
     _pansou_client: Optional[PanSouClient] = None
     _p115_manager: Optional[P115ClientManager] = None
@@ -110,6 +112,15 @@ class P115StrgmSub(_PluginBase):
             self._nullbr_app_id = config.get("nullbr_app_id", "J5LrECLuR")
             self._nullbr_api_key = config.get("nullbr_api_key", "")
             self._nullbr_priority = config.get("nullbr_priority", True)
+            
+            # 处理屏蔽系统订阅开关
+            new_block_state = config.get("block_system_subscribe", False)
+            old_block_state = self._block_system_subscribe
+            self._block_system_subscribe = new_block_state
+            
+            # 开关状态变化时，更新所有订阅的sites字段
+            if new_block_state != old_block_state:
+                self._update_subscribe_sites(new_block_state)
 
         # 初始化客户端
         self._init_clients()
@@ -249,8 +260,66 @@ class P115StrgmSub(_PluginBase):
             "nullbr_app_id": self._nullbr_app_id,
             "nullbr_api_key": self._nullbr_api_key,
             "nullbr_priority": self._nullbr_priority,
-            "exclude_subscribes": self._exclude_subscribes
+            "exclude_subscribes": self._exclude_subscribes,
+            "block_system_subscribe": self._block_system_subscribe
         })
+
+    def _update_subscribe_sites(self, block: bool):
+        """
+        屏蔽/恢复系统订阅
+        
+        :param block: True 表示屏蔽（添加id=-1的115网盘站点，并更新订阅sites为[-1]），
+                      False 表示恢复（删除该记录，并恢复订阅sites为[]）
+        """
+        try:
+            from sqlalchemy import text
+            
+            sites_value = [-1] if block else []
+            action = "屏蔽" if block else "恢复"
+            
+            with SessionFactory() as db:
+                # 1. 更新所有订阅的sites字段
+                subscribes = SubscribeOper(db=db).list()
+                updated_count = 0
+                excluded_count = 0
+                if subscribes:
+                    for subscribe in subscribes:
+                        if subscribe.id in self._exclude_subscribes:
+                            excluded_count += 1
+                            continue
+                        SubscribeOper(db=db).update(subscribe.id, {"sites": sites_value})
+                        updated_count += 1
+                    if excluded_count:
+                        logger.info(f"跳过 {excluded_count} 个排除订阅")
+                    logger.info(f"系统订阅{action}完成，已更新 {updated_count} 个订阅的sites字段为 {sites_value}")
+                
+                # 2. 添加或删除id=-1的站点记录
+                if block:
+                    # 开启屏蔽：添加id=-1的站点记录
+                    existing = Site.get(db, -1)
+                    if not existing:
+                        # 使用原生SQL插入，因为需要指定id为-1
+                        db.execute(
+                            text(
+                                "INSERT INTO site (id, name, url, is_active, limit_interval, limit_count, limit_seconds, timeout) VALUES (:id, :name, :url, :is_active, :limit_interval ,:limit_count, :limit_seconds, :timeout)"
+                            ),
+                            {"id": -1, "name": "115网盘", "url": "https://115.com", "is_active": True,"limit_interval":10000000, "limit_count": 1, "limit_seconds": 10000000, "timeout": 1}
+                        )
+                        db.commit()
+                        logger.info("已添加屏蔽站点记录 (id=-1, name=115网盘, is_active=True)")
+                    else:
+                        logger.info("屏蔽站点记录已存在，跳过添加")
+                else:
+                    # 关闭屏蔽：删除id=-1的站点记录
+                    existing = Site.get(db, -1)
+                    if existing:
+                        Site.delete(db, -1)
+                        logger.info("已删除屏蔽站点记录 (id=-1)")
+                    else:
+                        logger.info("屏蔽站点记录不存在，跳过删除")
+                        
+        except Exception as e:
+            logger.error(f"更新屏蔽站点记录失败: {e}")
 
     def _convert_nullbr_to_pansou_format(self, nullbr_resources: List[Dict]) -> List[Dict]:
         """
@@ -385,16 +454,9 @@ class P115StrgmSub(_PluginBase):
                 # 电视剧使用降级搜索策略
                 # 搜索关键词列表，按优先级排序
                 search_keywords = [
-                    f"{mediainfo.title} 第{season}季",  # 中文季号格式
-                    f"{mediainfo.title} S{season:02d}",  # 英文季号格式 S01
-                    f"{mediainfo.title} S{season}",      # 英文季号格式 S1
+                    f"{mediainfo.title}第{season}季",  # 中文季号格式
+                    mediainfo.title
                 ]
-                # 第一季额外添加只搜剧名的降级选项（第一季资源通常不标注季号）
-                if season == 1:
-                    search_keywords.append(mediainfo.title)
-                else:
-                    # 非第一季：最后降级为只搜剧名（但匹配时会验证季号）
-                    search_keywords.append(mediainfo.title)
 
                 for keyword in search_keywords:
                     logger.info(f"使用 PanSou 搜索电视剧资源: {mediainfo.title} S{season}，关键词: '{keyword}'")
@@ -765,7 +827,15 @@ class P115StrgmSub(_PluginBase):
                 
                 # 合并历史记录和网盘已存在的集数
                 all_existing = transferred_episodes | existing_episodes_in_cloud
-                
+
+                # 洗版模式下，需要升级的集数（有历史记录但非完美匹配）不应该被排除
+                # 这些集数需要继续搜索更好的资源
+                if is_best_version and episode_history_scores:
+                    episodes_to_upgrade = set(episode_history_scores.keys())
+                    all_existing = all_existing - episodes_to_upgrade
+                    if episodes_to_upgrade:
+                        logger.info(f"{mediainfo.title_year} S{season} 洗版模式：{len(episodes_to_upgrade)} 集待升级")
+
                 if all_existing:
                     missing_episodes = [ep for ep in missing_episodes if ep not in all_existing]
                     logger.info(
@@ -886,14 +956,25 @@ class P115StrgmSub(_PluginBase):
 
                                 if success:
                                     transferred_count += 1
+
+                                    # 判断是否是洗版升级（在更新 episode_history_scores 之前判断）
+                                    # 如果这集之前已有历史记录，说明是升级而非填补缺失
+                                    is_upgrade = is_best_version and episode in episode_history_scores
+
                                     # 更新历史分数记录
                                     episode_history_scores[episode] = current_score
                                     # 只有在 missing_episodes 中才移除
                                     if episode in missing_episodes:
                                         missing_episodes.remove(episode)
-                                    success_episodes.append(episode)
+
+                                    # 只有新转存（非洗版升级）的才加入 success_episodes
+                                    # 洗版升级不应该减少 lack_episode
+                                    if not is_upgrade:
+                                        success_episodes.append(episode)
+
                                     score_info = f"(分数:{current_score}, 完美匹配:{is_perfect})" if subscribe_filter.has_filters() else ""
-                                    logger.info(f"成功转存：{mediainfo.title} S{season:02d}E{episode:02d} {score_info}")
+                                    upgrade_info = " [洗版升级]" if is_upgrade else ""
+                                    logger.info(f"成功转存：{mediainfo.title} S{season:02d}E{episode:02d} {score_info}{upgrade_info}")
                                 else:
                                     logger.error(f"转存失败：{mediainfo.title} S{season:02d}E{episode:02d}")
 

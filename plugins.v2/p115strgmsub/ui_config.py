@@ -56,328 +56,98 @@ class UIConfig:
             {
                 'component': 'VForm',
                 'content': [
+                    # 插件说明
+                    {
+                        'component': 'VRow',
+                        'content': [{
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [{'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text': '自动搜索115网盘资源并转存缺失的电影和剧集，需配置115 Cookie和搜索服务。'}}]
+                        }]
+                    },
+                    # 基本开关 + 执行周期
                     {
                         'component': 'VRow',
                         'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VAlert',
-                                    'props': {
-                                        'type': 'info',
-                                        'variant': 'tonal',
-                                        'text': '本插件会自动获取 MoviePilot 中的电影和电视剧订阅，搜索 115 网盘资源，' \
-                                                '并将缺失的电影和剧集转存到您的 115 网盘中。需要配置 115 Cookie 和 PanSou 搜索服务。'
-                                    }
-                                }]
-                            }
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 2}, 'content': [{'component': 'VSwitch', 'props': {'model': 'enabled', 'label': '启用插件'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 3}, 'content': [{'component': 'VCronField', 'props': {'model': 'cron', 'label': '执行周期', 'placeholder': 'cron表达式'}}]},
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 2}, 'content': [{'component': 'VSwitch', 'props': {'model': 'notify', 'label': '发送通知'}}]},
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'block_system_subscribe', 'label': '屏蔽系统订阅'}}]},
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 2}, 'content': [{'component': 'VSwitch', 'props': {'model': 'onlyonce', 'label': '立即运行'}}]}
+                            
                         ]
                     },
+                    # 115网盘说明
+                    {
+                        'component': 'VRow',
+                        'content': [{
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [{'component': 'VAlert', 'props': {'type': 'warning', 'variant': 'tonal', 'text': '115网盘配置：请从浏览器获取Cookie（包含UID、CID、SEID、KID等字段）'}}]
+                        }]
+                    },
+                    # 转存目录 + 115 Cookie
                     {
                         'component': 'VRow',
                         'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 3},
-                                'content': [{
-                                    'component': 'VSwitch',
-                                    'props': {'model': 'enabled', 'label': '启用插件'}
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 3},
-                                'content': [{
-                                    'component': 'VSwitch',
-                                    'props': {'model': 'notify', 'label': '发送通知'}
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 3},
-                                'content': [{
-                                    'component': 'VSwitch',
-                                    'props': {'model': 'onlyonce', 'label': '立即运行一次'}
-                                }]
-                            }
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4}, 'content': [{'component': 'VTextField', 'props': {'model': 'save_path', 'label': '电视剧转存目录', 'placeholder': '/我的接收/MoviePilot/TV'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4}, 'content': [{'component': 'VTextField', 'props': {'model': 'movie_save_path', 'label': '电影转存目录', 'placeholder': '/我的接收/MoviePilot/Movie'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 4}, 'content': [{'component': 'VTextField', 'props': {'model': 'cookies', 'label': '115 Cookie', 'type': 'password', 'placeholder': 'UID=xxx; CID=xxx; SEID=xxx'}}]}
                         ]
                     },
+                    # PanSou说明
+                    {
+                        'component': 'VRow',
+                        'content': [{
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [{'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text': 'PanSou搜索服务：网盘资源聚合搜索，用于搜索115网盘分享链接'}}]
+                        }]
+                    },
+                    # PanSou 配置
                     {
                         'component': 'VRow',
                         'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 4},
-                                'content': [{
-                                    'component': 'VCronField',
-                                    'props': {
-                                        'model': 'cron',
-                                        'label': '执行周期',
-                                        'placeholder': '5位cron表达式，留空默认每6小时'
-                                    }
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 4},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'save_path',
-                                        'label': '电视剧转存目录',
-                                        'placeholder': '/我的接收/MoviePilot/TV'
-                                    }
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 4},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'movie_save_path',
-                                        'label': '电影转存目录',
-                                        'placeholder': '/我的接收/MoviePilot/Movie'
-                                    }
-                                }]
-                            }
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'pansou_enabled', 'label': '启用 PanSou'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 3}, 'content': [{'component': 'VTextField', 'props': {'model': 'pansou_url', 'label': 'PanSou API 地址', 'placeholder': 'https://your-pansou-api.com'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 6}, 'content': [{'component': 'VTextField', 'props': {'model': 'pansou_channels', 'label': 'TG 搜索频道', 'placeholder': '频道,用逗号分隔'}}]}
                         ]
                     },
+                    # PanSou 认证
                     {
                         'component': 'VRow',
                         'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VAlert',
-                                    'props': {
-                                        'type': 'warning',
-                                        'variant': 'tonal',
-                                        'title': '115 网盘配置',
-                                        'text': '请从浏览器中获取 115 网盘的 Cookie，包含 UID、CID、SEID、KID 等字段。'
-                                    }
-                                }]
-                            }
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'pansou_auth_enabled', 'label': '启用认证'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 3}, 'content': [{'component': 'VTextField', 'props': {'model': 'pansou_username', 'label': 'PanSou 用户名', 'placeholder': '启用认证时填写'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 6}, 'content': [{'component': 'VTextField', 'props': {'model': 'pansou_password', 'label': 'PanSou 密码', 'type': 'password', 'placeholder': '启用认证时填写'}}]}
                         ]
                     },
+                    # Nullbr说明
+                    {
+                        'component': 'VRow',
+                        'content': [{
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [{'component': 'VAlert', 'props': {'type': 'info', 'variant': 'tonal', 'text': 'Nullbr资源查询：基于TMDB ID精准查询115网盘资源，准确度更高'}}]
+                        }]
+                    },
+                    # Nullbr 配置
                     {
                         'component': 'VRow',
                         'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'cookies',
-                                        'label': '115 Cookie',
-                                        'rows': 1,
-                                        'type': 'password',
-                                        'placeholder': 'UID=xxx; CID=xxx; SEID=xxx; KID=xxx'
-                                    }
-                                }]
-                            }
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'nullbr_enabled', 'label': '启用 Nullbr'}}]},
+                            {'component': 'VCol', 'props': {'cols': 6, 'md': 3}, 'content': [{'component': 'VSwitch', 'props': {'model': 'nullbr_priority', 'label': 'Nullbr 优先'}}]},
+                            {'component': 'VCol', 'props': {'cols': 12, 'md': 6}, 'content': [{'component': 'VTextField', 'props': {'model': 'nullbr_api_key', 'label': 'Nullbr API Key', 'type': 'password', 'placeholder': '请输入 API Key'}}]}
                         ]
                     },
+                    # 排除订阅
                     {
                         'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VAlert',
-                                    'props': {
-                                        'type': 'info',
-                                        'variant': 'tonal',
-                                        'title': 'PanSou 搜索服务配置',
-                                        'text': 'PanSou 是网盘资源聚合搜索服务，用于搜索 115 网盘分享链接。' \
-                                                '如果您的 PanSou 服务需要登录认证，请填写用户名和密码。'
-                                    }
-                                }]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 4},
-                                'content': [{
-                                    'component': 'VSwitch',
-                                    'props': {'model': 'pansou_enabled', 'label': '启用 PanSou 搜索'}
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 4},
-                                'content': [{
-                                    'component': 'VSwitch',
-                                    'props': {'model': 'pansou_auth_enabled', 'label': '启用认证'}
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 4},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'pansou_url',
-                                        'label': 'PanSou API 地址',
-                                        'placeholder': 'https://your-pansou-api.com'
-                                    }
-                                }]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 6},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'pansou_username',
-                                        'label': 'PanSou 用户名',
-                                        'placeholder': '用户名（启用认证时填写）'
-                                    }
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 6},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'pansou_password',
-                                        'label': 'PanSou 密码',
-                                        'type': 'password',
-                                        'placeholder': '密码（启用认证时填写）'
-                                    }
-                                }]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'pansou_channels',
-                                        'label': 'TG 搜索频道',
-                                        'placeholder': '频道列表，用逗号分隔，例如: channel1,channel2,channel3'
-                                    }
-                                }]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VAlert',
-                                    'props': {
-                                        'type': 'info',
-                                        'variant': 'tonal',
-                                        'title': 'Nullbr 资源查询配置',
-                                        'text': 'Nullbr 是基于 TMDB ID 的精准资源查询服务，可通过 TMDB ID 直接查询 115 网盘资源，准确度较高。需要配置 APP ID 和 API Key。'
-                                    }
-                                }]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 3},
-                                'content': [{
-                                    'component': 'VSwitch',
-                                    'props': {
-                                        'model': 'nullbr_enabled',
-                                        'label': '启用 Nullbr'
-                                    }
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 3},
-                                'content': [{
-                                    'component': 'VSwitch',
-                                    'props': {
-                                        'model': 'nullbr_priority',
-                                        'label': 'Nullbr 优先'
-                                    }
-                                }]
-                            },
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12, 'md': 6},
-                                'content': [{
-                                    'component': 'VTextField',
-                                    'props': {
-                                        'model': 'nullbr_api_key',
-                                        'label': 'Nullbr API Key',
-                                        'placeholder': '请输入 API Key',
-                                        'type': 'password'
-                                    }
-                                }]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VAlert',
-                                    'props': {
-                                        'type': 'info',
-                                        'variant': 'tonal',
-                                        'title': '订阅过滤配置',
-                                        'text': '选择不需要本插件处理的订阅，这些订阅将被跳过。'
-                                    }
-                                }]
-                            }
-                        ]
-                    },
-                    {
-                        'component': 'VRow',
-                        'content': [
-                            {
-                                'component': 'VCol',
-                                'props': {'cols': 12},
-                                'content': [{
-                                    'component': 'VSelect',
-                                    'props': {
-                                        'model': 'exclude_subscribes',
-                                        'label': '排除订阅',
-                                        'multiple': True,
-                                        'chips': True,
-                                        'clearable': True,
-                                        'closable-chips': True,
-                                        'hint': '选择不需要处理的订阅（电影或电视剧）',
-                                        'persistent-hint': True,
-                                        'items': subscribe_options
-                                    }
-                                }]
-                            }
-                        ]
+                        'content': [{
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [{'component': 'VSelect', 'props': {'model': 'exclude_subscribes', 'label': '排除订阅（选择不需要本插件处理的订阅）', 'multiple': True, 'chips': True, 'clearable': True, 'closable-chips': True, 'items': subscribe_options}}]
+                        }]
                     }
                 ]
             }
@@ -402,7 +172,8 @@ class UIConfig:
             "nullbr_app_id": "",
             "nullbr_api_key": "",
             "nullbr_priority": True,
-            "exclude_subscribes": []
+            "exclude_subscribes": [],
+            "block_system_subscribe": False
         }
         
         return form_schema, default_config
