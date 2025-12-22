@@ -149,7 +149,7 @@ class P115StrgmSub(_PluginBase):
         
         try:
             # 下载文件
-            with urllib.request.urlopen(download_url, timeout=30) as response:
+            with urllib.request.urlopen(download_url, timeout=120) as response:
                 content = response.read()
             
             # 保存到本地
