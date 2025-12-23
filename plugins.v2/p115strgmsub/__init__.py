@@ -534,66 +534,66 @@ class P115StrgmSub(_PluginBase):
         
         
         
-        # 方法2: 回退到异步客户端（用户名/密码模式）
-        if self._hdhive_username and self._hdhive_password:
-            try:
-                import asyncio
-                import os
-                from .lib.hdhive import create_async_client as create_hdhive_async_client
+        # # 方法2: 回退到异步客户端（用户名/密码模式）
+        # if self._hdhive_username and self._hdhive_password:
+        #     try:
+        #         import asyncio
+        #         import os
+        #         from .lib.hdhive import create_async_client as create_hdhive_async_client
                 
-                proxy_host = os.environ.get("PROXY_HOST")
-                proxy = {"http": proxy_host, "https": proxy_host} if proxy_host else None
+        #         proxy_host = os.environ.get("PROXY_HOST")
+        #         proxy = {"http": proxy_host, "https": proxy_host} if proxy_host else None
                 
-                logger.info(f"使用 HDHive (Async) 查询: {mediainfo.title} (TMDB ID: {mediainfo.tmdb_id})")
+        #         logger.info(f"使用 HDHive (Async) 查询: {mediainfo.title} (TMDB ID: {mediainfo.tmdb_id})")
                 
-                async def async_search():
-                    async with create_hdhive_async_client(
-                        username=self._hdhive_username,
-                        password=self._hdhive_password,
-                        headless=True,
-                        proxy=proxy
-                    ) as client:
-                        # 获取媒体信息
-                        media = await client.get_media_by_tmdb_id(mediainfo.tmdb_id, hdhive_media_type)
-                        if not media:
-                            return []
+        #         async def async_search():
+        #             async with create_hdhive_async_client(
+        #                 username=self._hdhive_username,
+        #                 password=self._hdhive_password,
+        #                 headless=True,
+        #                 proxy=proxy
+        #             ) as client:
+        #                 # 获取媒体信息
+        #                 media = await client.get_media_by_tmdb_id(mediainfo.tmdb_id, hdhive_media_type)
+        #                 if not media:
+        #                     return []
                         
-                        # 获取资源列表
-                        resources_result = await client.get_resources(media.slug, hdhive_media_type, media_id=media.id)
-                        if not resources_result or not resources_result.success:
-                            return []
+        #                 # 获取资源列表
+        #                 resources_result = await client.get_resources(media.slug, hdhive_media_type, media_id=media.id)
+        #                 if not resources_result or not resources_result.success:
+        #                     return []
                         
-                        # 过滤免费的 115 资源并获取分享链接
-                        free_115_resources = []
-                        for res in resources_result.resources:
-                            if hasattr(res, 'website') and res.website.value == '115' and res.is_free:
-                                share_result = await client.get_share_url_by_click(res.slug)
-                                if share_result and share_result.url:
-                                    free_115_resources.append({
-                                        "url": share_result.url,
-                                        "title": res.title,
-                                        "update_time": ""
-                                    })
+        #                 # 过滤免费的 115 资源并获取分享链接
+        #                 free_115_resources = []
+        #                 for res in resources_result.resources:
+        #                     if hasattr(res, 'website') and res.website.value == '115' and res.is_free:
+        #                         share_result = await client.get_share_url_by_click(res.slug)
+        #                         if share_result and share_result.url:
+        #                             free_115_resources.append({
+        #                                 "url": share_result.url,
+        #                                 "title": res.title,
+        #                                 "update_time": ""
+        #                             })
                         
-                        return free_115_resources
+        #                 return free_115_resources
                 
-                # 运行异步任务
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    results = loop.run_until_complete(async_search())
-                finally:
-                    loop.close()
+        #         # 运行异步任务
+        #         loop = asyncio.new_event_loop()
+        #         asyncio.set_event_loop(loop)
+        #         try:
+        #             results = loop.run_until_complete(async_search())
+        #         finally:
+        #             loop.close()
                 
-                if results:
-                    logger.info(f"HDHive (Async) 找到 {len(results)} 个免费 115 资源")
-                else:
-                    logger.info(f"HDHive (Async) 未找到免费 115 资源")
-                return results
+        #         if results:
+        #             logger.info(f"HDHive (Async) 找到 {len(results)} 个免费 115 资源")
+        #         else:
+        #             logger.info(f"HDHive (Async) 未找到免费 115 资源")
+        #         return results
                 
-            except Exception as e:
-                logger.error(f"HDHive (Async) 查询失败: {e}")
-                return []
+        #     except Exception as e:
+        #         logger.error(f"HDHive (Async) 查询失败: {e}")
+        #         return []
         
         # 方法1: 尝试使用同步客户端（Cookie 模式）
         if self._hdhive_client:
