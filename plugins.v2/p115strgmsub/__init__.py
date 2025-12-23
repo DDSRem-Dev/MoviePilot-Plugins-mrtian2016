@@ -159,13 +159,27 @@ class P115StrgmSub(_PluginBase):
         import urllib.request
         import urllib.error
 
-        base_url = "https://ghfast.top/https://raw.githubusercontent.com/mrtian2016/hdhive_resource/main"
+        base_url = "https://raw.githubusercontent.com/mrtian2016/hdhive_resource/main"
         download_url = f"{base_url}/{ext_filename}"
 
         logger.info(f"本地未找到 hdhive 扩展模块，尝试下载: {download_url}")
 
         try:
-            with urllib.request.urlopen(download_url, timeout=120) as response:
+            # 设置代理
+            proxy = settings.PROXY
+            if proxy:
+                # 兼容字符串和字典格式
+                if isinstance(proxy, dict):
+                    proxy_handler = urllib.request.ProxyHandler(proxy)
+                else:
+                    proxy_handler = urllib.request.ProxyHandler({"http": proxy, "https": proxy})
+                opener = urllib.request.build_opener(proxy_handler)
+                logger.info(f"下载 hdhive 使用代理: {proxy}")
+                response = opener.open(download_url, timeout=120)
+            else:
+                response = urllib.request.urlopen(download_url, timeout=120)
+
+            with response:
                 content = response.read()
 
             with open(target_path, "wb") as f:
