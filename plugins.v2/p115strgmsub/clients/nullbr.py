@@ -49,7 +49,7 @@ class NullbrClient:
                 missing.append("APP ID")
             if not self.api_key:
                 missing.append("API Key")
-            logger.error(f"❌ Nullbr 缺少必要配置：{', '.join(missing)}，请在插件设置中配置")
+            logger.error(f"Nullbr 缺少必要配置：{', '.join(missing)}，请在插件设置中配置")
             return []
 
         try:
@@ -104,7 +104,7 @@ class NullbrClient:
                 missing.append("APP ID")
             if not self.api_key:
                 missing.append("API Key")
-            logger.error(f"❌ Nullbr 缺少必要配置：{', '.join(missing)}，请在插件设置中配置")
+            logger.error(f"Nullbr 缺少必要配置：{', '.join(missing)}，请在插件设置中配置")
             return []
 
         try:
@@ -169,7 +169,7 @@ class NullbrClient:
                 missing.append("APP ID")
             if not self.api_key:
                 missing.append("API Key")
-            logger.warning(f"⚠️ Nullbr 连接检查失败：缺少{', '.join(missing)}")
+            logger.warning(f"Nullbr 连接检查失败：缺少{', '.join(missing)}")
             return False
 
         try:

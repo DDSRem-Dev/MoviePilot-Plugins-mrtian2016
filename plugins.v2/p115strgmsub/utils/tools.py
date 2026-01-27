@@ -16,6 +16,49 @@ from app.core.config import settings
 from app.log import logger
 
 
+def _parse_proxy_url(proxy) -> Optional[Dict[str, str]]:
+    """
+    解析代理URL，支持 http://user:password@ip:port 格式
+    
+    :param proxy: 代理配置，可以是字符串或字典
+    :return: Playwright 格式的代理配置 {"server": "...", "username": "...", "password": "..."}
+    """
+    if not proxy:
+        return None
+    
+    # 如果是字典格式，取 http 或 https
+    if isinstance(proxy, dict):
+        proxy_url = proxy.get("http") or proxy.get("https")
+    else:
+        proxy_url = str(proxy)
+    
+    if not proxy_url:
+        return None
+    
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(proxy_url)
+        
+        # 构建不带认证的服务器地址
+        if parsed.port:
+            server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+        else:
+            server = f"{parsed.scheme}://{parsed.hostname}"
+        
+        result = {"server": server}
+        
+        # 如果有用户名和密码
+        if parsed.username:
+            result["username"] = parsed.username
+        if parsed.password:
+            result["password"] = parsed.password
+        
+        return result
+    except Exception as e:
+        logger.debug(f"解析代理URL失败: {e}，将直接使用原始URL")
+        return {"server": proxy_url}
+
+
 def get_hdhive_extension_filename() -> Optional[str]:
     """
     根据当前平台获取 hdhive 扩展模块的文件名
@@ -63,7 +106,7 @@ def download_so_file(lib_dir: Path):
     # 获取当前平台对应的文件名
     ext_filename = get_hdhive_extension_filename()
     if not ext_filename:
-        logger.warning(f"⚠️ 不支持的平台: {system}/{machine}，HDHive 功能无法使用")
+        logger.warning(f"不支持的平台: {system}/{machine}，HDHive 功能无法使用")
         return
 
     target_path = lib_dir / ext_filename
@@ -100,15 +143,14 @@ def download_so_file(lib_dir: Path):
         with open(target_path, "wb") as f:
             f.write(content)
 
-        # 非 Windows 平台设置可执行权限
         if system != "windows":
             os.chmod(target_path, 0o755)
 
-        logger.info(f"✓ hdhive 扩展模块下载成功: {target_path}")
+        logger.info(f"hdhive 扩展模块下载成功: {target_path}")
 
     except urllib.error.HTTPError as e:
         if e.code == 404:
-            logger.warning(f"⚠️ hdhive 扩展模块暂不支持当前平台 ({system}/{machine})，HDHive 功能无法使用")
+            logger.warning(f"hdhive 扩展模块暂不支持当前平台 ({system}/{machine})，HDHive 功能无法使用")
         else:
             logger.error(f"下载 hdhive 扩展模块失败 (HTTP {e.code}): {e}")
     except urllib.error.URLError as e:
@@ -249,16 +291,18 @@ def refresh_hdhive_cookie_with_playwright(
             # 配置浏览器启动选项
             launch_options = {"headless": True}
 
-            # 配置代理
+            # 配置代理（支持 http://user:password@ip:port 格式）
             context_options = {}
             if proxy:
-                if isinstance(proxy, dict):
-                    proxy_url = proxy.get("http") or proxy.get("https")
-                else:
-                    proxy_url = proxy
-                if proxy_url:
-                    context_options["proxy"] = {"server": proxy_url}
-                    logger.info(f"HDHive Cookie 刷新使用代理: {proxy_url}")
+                proxy_config = _parse_proxy_url(proxy)
+                if proxy_config:
+                    context_options["proxy"] = proxy_config
+                    # 日志中隐藏密码
+                    safe_server = proxy_config.get("server", "")
+                    if proxy_config.get("username"):
+                        logger.info(f"HDHive Cookie 刷新使用代理: {safe_server} (带认证)")
+                    else:
+                        logger.info(f"HDHive Cookie 刷新使用代理: {safe_server}")
 
             # 使用 Firefox（更容易绕过 Cloudflare）
             browser = pw.chromium.launch(**launch_options)
@@ -282,7 +326,7 @@ def refresh_hdhive_cookie_with_playwright(
                 try:
                     if page.query_selector(sel):
                         page.fill(sel, username)
-                        logger.info("HDHive: ✓ 填写用户名")
+                        logger.info("HDHive: 填写用户名成功")
                         username_filled = True
                         break
                 except Exception:
@@ -306,7 +350,7 @@ def refresh_hdhive_cookie_with_playwright(
                 try:
                     if page.query_selector(sel):
                         page.fill(sel, password)
-                        logger.info("HDHive: ✓ 填写密码")
+                        logger.info("HDHive: 填写密码成功")
                         password_filled = True
                         break
                 except Exception:
@@ -324,10 +368,10 @@ def refresh_hdhive_cookie_with_playwright(
                 btn = page.query_selector('button[type="submit"]')
                 if btn:
                     btn.click()
-                    logger.info("HDHive: ✓ 点击登录按钮")
+                    logger.info("HDHive: 点击登录按钮成功")
                 else:
                     page.keyboard.press("Enter")
-                    logger.info("HDHive: ✓ 按 Enter 键提交")
+                    logger.info("HDHive: 按 Enter 键提交成功")
             except Exception:
                 page.keyboard.press("Enter")
 
@@ -395,14 +439,14 @@ def refresh_hdhive_cookie_with_playwright(
                 if csrf:
                     cookie_parts.append(f"csrf_access_token={csrf}")
                 cookie_str = "; ".join(cookie_parts)
-                logger.info(f"HDHive: ✓ 登录成功！Cookie 长度: {len(cookie_str)}")
+                logger.info(f"HDHive: 登录成功！Cookie 长度: {len(cookie_str)}")
                 return cookie_str
             else:
-                logger.error(f"HDHive: ✗ 登录失败：未获取到 token，当前 URL: {current_url}")
+                logger.error(f"HDHive: 登录失败：未获取到 token，当前 URL: {current_url}")
                 return None
 
     except Exception as e:
-        logger.error(f"HDHive: ✗ Playwright 登录异常: {e}")
+        logger.error(f"HDHive: Playwright 登录异常: {e}")
         return None
 
 

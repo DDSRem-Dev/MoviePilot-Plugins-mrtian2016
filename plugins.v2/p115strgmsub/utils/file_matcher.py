@@ -19,7 +19,7 @@ class SubscribeFilter:
 
         :param quality: 质量正则表达式，如 "WEB-?DL|WEB-?RIP"
         :param resolution: 分辨率正则表达式，如 "4K|2160p|x2160"
-        :param effect: 特效正则表达式，如 "Dolby[\s.]+Vision|DOVI|[\s.]+DV[\s.]+"
+        :param effect: 特效正则表达式
         :param strict: 是否严格匹配，False 时不符合条件的资源也会被接受但分数较低
         """
         self.quality = quality
