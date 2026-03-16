@@ -477,7 +477,8 @@ class SearchHandler:
                                 free_115_resources.append({
                                     "url": share_url,
                                     "title": resource.get("title", ""),
-                                    "update_time": resource.get("created_at", "")
+                                    "update_time": resource.get("created_at", ""),
+                                    "is_official": bool(resource.get("is_official"))
                                 })
                             else:
                                 logger.error(f"HDHive (API) 解锁失败，返回数据异常或非成功: {unlock_data}")
@@ -492,12 +493,18 @@ class SearchHandler:
                             "update_time": resource.get("created_at", ""),
                             "slug": slug,
                             "need_unlock": True,
-                            "unlock_points": unlock_points
+                            "unlock_points": unlock_points,
+                            "is_official": bool(resource.get("is_official"))
                         })
                 else:
                     logger.debug(f"HDHive (API) 资源 {resource.get('title')} 非免费且未开启自动解锁，已跳过")
 
             if free_115_resources:
+                # 排序：免费优先，同组内官方(is_official)优先
+                free_115_resources.sort(key=lambda r: (
+                    r.get("need_unlock", False),      # False(免费) 排前面
+                    not r.get("is_official", False)    # True(官方) 排前面
+                ))
                 free_count = sum(1 for r in free_115_resources if not r.get("need_unlock"))
                 unlock_count = sum(1 for r in free_115_resources if r.get("need_unlock"))
                 logger.info(f"HDHive (API) 共得到 {len(free_115_resources)} 个 115 资源（免费: {free_count}, 待自费解锁: {unlock_count}）")
