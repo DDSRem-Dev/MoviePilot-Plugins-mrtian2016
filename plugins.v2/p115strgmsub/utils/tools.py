@@ -607,6 +607,7 @@ def hdhive_checkin_playwright(
             proxy=proxy,
             headless=True,
             browser_type="chromium",
+            state_file=f"hdhive_{username}_state.json"
         ) as client:
             return await client.checkin(ct)
 

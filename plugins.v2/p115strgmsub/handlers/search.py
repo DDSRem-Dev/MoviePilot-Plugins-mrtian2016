@@ -340,7 +340,8 @@ class SearchHandler:
                     cookie=self._hdhive_cookie,
                     browser_type="chromium",
                     headless=True,
-                    proxy=proxy
+                    proxy=proxy,
+                    state_file=f"hdhive_{self._hdhive_username}_state.json"
                 ) as client:
                     # 获取媒体信息
                     media = await client.get_media_by_tmdb_id(mediainfo.tmdb_id, hdhive_media_type)
