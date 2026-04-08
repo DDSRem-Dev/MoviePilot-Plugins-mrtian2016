@@ -47,7 +47,7 @@ class P115StrgmSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/cloud.png"
     # 插件版本
-    plugin_version = "1.3.8"
+    plugin_version = "1.3.9"
     # 插件作者
     plugin_author = "mrtian2016"
     # 作者主页
@@ -631,8 +631,6 @@ class P115StrgmSub(_PluginBase):
         self._ensure_toggle_scheduler()
         download_so_file(Path(__file__).parent / "lib")
 
-        old_block = bool(self._block_system_subscribe)
-
         if config:
             self._enabled = config.get("enabled", False)
 
@@ -706,18 +704,19 @@ class P115StrgmSub(_PluginBase):
         self._init_clients()
         self._init_handlers()
 
-        # 触发条件2：True->False 且窗口无效 => 回写 True 并屏蔽
-        if (old_block is True) and (self._block_system_subscribe is False) and (not self._window_enabled()):
-            self._block_system_subscribe = True
-            self.__update_config()
-            self._enter_blocked(reason="触发条件2（窗口无效）")
-            return
-
         # 配置立即生效
         if self._block_system_subscribe:
             self._enter_blocked(reason="配置应用")
         else:
-            self._enter_unblocked(reason="配置应用")
+            # 用户手动关闭屏蔽：应用站点并取消窗口任务（不自动回弹）
+            self._cancel_toggle_jobs()
+            if self._unblock_site_names:
+                site_ids = self._resolve_site_ids(ids=self._unblock_site_ids, names=self._unblock_site_names)
+                if site_ids:
+                    self._apply_sites_to_all_subscribes(site_ids, reason="用户关闭屏蔽：全量同步站点")
+                    self._try_set_default_sites_for_unblocked(site_ids)
+            self.__update_config()
+            logger.info("用户已关闭屏蔽系统订阅（配置应用）")
 
         # 立即运行一次
         if self._enabled or self._onlyonce:
@@ -1152,7 +1151,8 @@ class P115StrgmSub(_PluginBase):
                 logger.error(f"同步任务异常：{e}")
                 success = False
             finally:
-                if success and self._is_last_run_today(run_start):
+                # 仅在用户开启了���蔽系统订阅时，才执行自动窗口切换逻辑
+                if success and self._block_system_subscribe and self._is_last_run_today(run_start):
                     if int(self._unblock_delay_minutes) < 0 or (not self._window_enabled()):
                         self._enter_blocked(reason="触发条件1")
                     else:
